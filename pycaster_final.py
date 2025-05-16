@@ -5,7 +5,7 @@ pygame.init()
 pygame.display.set_caption("pycaster")
 
 # Initial Variables: Map
-TILE = 32                                       # Size of each "grid tile"
+TILE = 42                                       # Size of each "grid tile"
 ROWS = 10                                       # Rows and columns in map
 COLS = 10                                       
 WIDTH = COLS*TILE                               # Grid display width and height
@@ -88,110 +88,136 @@ while True:
     # Draw small circle for player (2D View)
     pygame.draw.circle(screen, (0, 0, 255), (px, py), 4)
 
-    #RAYS
+    # Rayangle is normalized player angle - half FOV, used to find ray coordinates/distances
+    # (i.e. for 60 degrees, a middle ray splits fov between two 30 degree angles)
     rayAngle = normalize(pa) - FOV/2 
     
+    # Drawing rays
     for i in range(TOTALRAYS):
-        wall_x = 0
+        wall_x = 0              # Final x and y coordinates
         wall_y = 0
-        found_horizontal_wall = False
-        horizontal_hitx = 0
-        horizontal_hity = 0
+        
+        found_hor_wall = False  # Booleans for checking if walls have been found on hor/ver intersections
+        found_ver_wall = False
+        hor_hit_x = 0           # Horizontal/vertical coordinates for where a wall is hit (if it is)
+        hor_hit_y = 0
+        ver_hit_x = 0
+        ver_hit_y = 0
 
-        firstintx = None
-        firstinty = None
+        first_x = None          # Initial distance from px to first horizontal intersection
+        first_y = None          # Initial distance from py to first vertical intersection
 
-        if rayAngle > 0 and rayAngle < math.pi: #facing down
-            firstinty = (py // TILE) * TILE + TILE
-        else: #facing up
-            firstinty = (py // TILE) * TILE - 1
+        # HORIZONTAL INTERSECTIONS
+        # If player angle is facing down (ray angle between 0 and pi, as we move down in a flipped unit circle)
+        if rayAngle > 0 and rayAngle < math.pi:
+            # Location of first vertical intersection is tile next to the current tile the player is in
+            first_y = (py // TILE) * TILE + TILE
+        else:
+            # If player is facing up, first vertical intersection is the top of the tile the player is in
+            first_y = (py // TILE) * TILE - 1
 
-        firstintx = ((firstinty - py) / math.tan(rayAngle)) + px
+        # In this case, first horizontal intersection is solved using py, px, rayAngle, and first_y
+        first_x = ((first_y - py) / math.tan(rayAngle)) + px
 
-        hor_step_x = firstintx
-        hor_step_y = firstinty
+        # Increment hor_step_x and y with the initial distances of the first intersections
+        hor_step_x = first_x
+        hor_step_y = first_y
 
+        # Step amount: increases by +tilesize if looking down, or -tilesize if looking up
         ya = TILE if (rayAngle > 0 and rayAngle < math.pi) else -TILE
         xa = ya / math.tan(rayAngle)
 
+        # As long as the distance calculations are in bounds of the 3D screen
         while(hor_step_x <= WIDTH and hor_step_x >= 0 and hor_step_y <= HEIGHT and hor_step_y >= 0):
+            # Call helper function to check if wall exists at coordinate
             if wall_check(hor_step_x, hor_step_y):
-                found_horizontal_wall = True
-                horizontal_hitx = hor_step_x
-                horizontal_hity = hor_step_y
+                # Set found_wall trigger, with hit coordinates equal to current step
+                found_hor_wall = True
+                hor_hit_x = hor_step_x
+                hor_hit_y = hor_step_y
                 break
             else:
+                # Else, increment by step amount until a wall is eventually found
                 hor_step_x += xa
                 hor_step_y += ya
         
-        
-        found_vertical_wall = False
-        vertical_hitx = 0
-        vertical_hity = 0
-
+        # VERTICAL INTERSECTIONS:
         if rayAngle < 0.5 * math.pi or rayAngle > 1.5 * math.pi: #right
-             firstintx = ((px // TILE) * TILE) + TILE
+             first_x = ((px // TILE) * TILE) + TILE
         else: #facing left
-             firstintx = ((px // TILE) * TILE) - 1
+             first_x = ((px // TILE) * TILE) - 1
 
-        firstinty = ((firstintx-px) * math.tan(rayAngle)) + py
+        first_y = ((first_x-px) * math.tan(rayAngle)) + py
 
-        ver_step_x = firstintx
-        ver_step_y = firstinty
+        ver_step_x = first_x
+        ver_step_y = first_y
 
         xa = TILE if (rayAngle < 0.5 * math.pi or rayAngle > 1.5 * math.pi) else -TILE
         ya = xa * math.tan(rayAngle)
 
         while(ver_step_x <= WIDTH and ver_step_x >= 0 and ver_step_y <= HEIGHT and ver_step_y >= 0):
             if wall_check(ver_step_x, ver_step_y):
-                found_vertical_wall = True
-                vertical_hitx = ver_step_x
-                vertical_hity = ver_step_y
+                found_ver_wall = True
+                ver_hit_x = ver_step_x
+                ver_hit_y = ver_step_y
                 break
             else:
                 ver_step_x += xa
                 ver_step_y += ya
         
-        # distance
-        hordist = 0
-        verdist = 0
+        # Ray Distance Calculations
+        # Because each ray is casted to determine the horizontal and vertical intersections of a wall, 
+        # The ray with the shorter distance must be determined, as this is the one to draw
+        hor_dist = 0
+        ver_dist = 0
 
-        if found_horizontal_wall:
-            hordist = math.sqrt(math.pow((horizontal_hitx - px), 2) + math.pow((horizontal_hity-py), 2))
+        # If a horizontal/vertical wall was found, find distance. Else, set distance to arbitrary large number 
+        if found_hor_wall:
+            hordist = math.sqrt(math.pow((hor_hit_x - px), 2) + math.pow((hor_hit_y-py), 2))
         else:
             hordist = 99999
 
-        if found_vertical_wall:
-            verdist = math.sqrt(math.pow((vertical_hitx - px), 2) + math.pow((vertical_hity-py), 2))
+        if found_ver_wall:
+            verdist = math.sqrt(math.pow((ver_hit_x - px), 2) + math.pow((ver_hit_y-py), 2))
         else:
             verdist = 99999
         
+        # Compare horizontal and vertical distance calculations to the wall, and set wall coordinates to shortest
         if hordist < verdist:
-            wall_x = horizontal_hitx
-            wall_y = horizontal_hity
+            wall_x = hor_hit_x
+            wall_y = hor_hit_y
             hordist *= math.cos(pa - rayAngle)
         else:
-            wall_x = vertical_hitx
-            wall_y = vertical_hity
+            wall_x = ver_hit_x
+            wall_y = ver_hit_y
             verdist *= math.cos(pa - rayAngle)
 
+        # Append "winning" distance to ray_dist array (will be used for rendering walls)
         if hordist < verdist:
             ray_dist.append(hordist)
         else:
+            # Quick and dirty way shade vertical walls a different colour
+            # (append the distance value with a negative offset, and check if the  
+            # current ray being drawn is negative. If so, change colour and remove offset)
             ray_dist.append(verdist - 1000)
         
+        # Draw ray (for 2D side) and increment rayAngle to draw next
         pygame.draw.line(screen, (255, 0, 0), (px, py), (wall_x, wall_y))
         rayAngle += FOV / TOTALRAYS
 
+    # Counter to draw all casted rays (3D view)
     counter = 0
     for i in range(TOTALRAYS):
+        # Recall: workaround to make vertical rays appear darker with -1000 offset
         if ray_dist[counter] < 0:
-            line_height = (32 / (ray_dist[counter] + 1000)) * 415
+            line_height = (32 / (ray_dist[counter] + 1000)) * 315
             drawbegin = (HEIGHT / 2) - (line_height / 2)
             draw_end = line_height
             pygame.draw.rect(screen, (130, 0, 0), (counter*BARWIDTH + WIDTH, drawbegin, BARWIDTH, draw_end))
         else:
-            line_height = (32 / (ray_dist[counter])) * 415
+            # Height: dividing 32 by the distance of the ray from the player (times 415, offset of player to screen)
+            line_height = (32 / (ray_dist[counter])) * 315
+            # Beginning of casted ray located at window height / 2 minus line height
             drawbegin = (HEIGHT / 2) - (line_height / 2)
             draw_end = line_height
             pygame.draw.rect(screen, (255, 0, 0), (counter*BARWIDTH + WIDTH, drawbegin, BARWIDTH, draw_end))
