@@ -1,4 +1,9 @@
 import pygame
+'''
+Note:
+pycaster.py is outdated and no longer used
+pycaster_final.py has replaced, as (finally) pushed from my laptop
+'''
 
 pygame.init()
 pygame.display.set_caption('pycaster v1.5')
